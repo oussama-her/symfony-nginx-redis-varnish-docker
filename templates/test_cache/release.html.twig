@@ -1,0 +1,6 @@
+Symfony releases:
+<ul>
+    {% for release in symfony_releases %}
+        <li> symfony {{ release.name|e }}</li>
+    {% endfor %}
+</ul>

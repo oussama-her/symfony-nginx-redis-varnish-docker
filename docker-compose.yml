@@ -1,12 +1,71 @@
-version: '3'
+version: "3.4"
 
 services:
+  php:
+    build:
+      context: .
+      target: app_php
+      args:
+        SYMFONY_VERSION: ${SYMFONY_VERSION:-}
+        STABILITY: ${STABILITY:-stable}
+    restart: unless-stopped
+    volumes:
+      - php_socket:/var/run/php
+    healthcheck:
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 30s
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD:-!ChangeMe!}@database:5432/${POSTGRES_DB:-app}?serverVersion=${POSTGRES_VERSION:-14}
+
+  nginx:
+    build:
+      context: .
+      target: app_nginx
+    depends_on:
+      - varnish
+    restart: unless-stopped
+    volumes:
+      - ./:/srv/app
+      - ./docker/nginx/nginx.conf:/etc/nginx/conf.d/default.conf
+      - php_socket:/var/run/php
+    ports:
+      # HTTP
+      - "8080:80"
+
+  redis:
+    build:
+      context: .
+      target: app_redis
+    depends_on:
+      - nginx
+    restart: always
+    ports:
+      - '6379:6379'
+    volumes:
+      - ./data/redis:/data/redis
+
+  varnish:
+    build:
+      context: .
+      target: app_varnish
+    volumes:
+      - "./docker/varnish/varnish.vcl:/etc/varnish/default.vcl"
+    ports:
+      - "80:80"
+    tmpfs:
+      - /var/lib/varnish:exec
+    environment:
+      - VARNISH_SIZE=2G
+    depends_on:
+      - php
+
 ###> doctrine/doctrine-bundle ###
   database:
     image: postgres:${POSTGRES_VERSION:-14}-alpine
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-app}
-      # You should definitely change the password in production
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-!ChangeMe!}
       POSTGRES_USER: ${POSTGRES_USER:-app}
     volumes:
@@ -16,6 +75,8 @@ services:
 ###< doctrine/doctrine-bundle ###
 
 volumes:
+  php_socket:
+
 ###> doctrine/doctrine-bundle ###
   db-data:
 ###< doctrine/doctrine-bundle ###
